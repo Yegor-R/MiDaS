@@ -1,6 +1,7 @@
 """Compute depth maps for images in the input folder.
 """
 import os
+import time
 import glob
 import utils
 import cv2
@@ -69,7 +70,7 @@ def run(input_path, output_path, model_path, model_type="large"):
     print("start processing")
 
     for ind, img_name in enumerate(img_names):
-
+        start = time.time()
         print("  processing {} ({}/{})".format(img_name, ind + 1, num_images))
 
         # input
@@ -86,6 +87,7 @@ def run(input_path, output_path, model_path, model_type="large"):
             output_path, os.path.splitext(os.path.basename(img_name))[0]
         )
         utils.write_depth(filename, prediction, bits=2)
+        print(1/(time.time()-start))
 
     print("finished")
 
