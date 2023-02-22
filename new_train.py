@@ -1,11 +1,15 @@
 import os
+import sys
+import glob
 import time
+import argparse
 import cv2
 import torch
-import glob
+import yaml
+
 import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
-import sys
+
 sys.path.insert(0,'training/')
 
 from pprint import pprint
@@ -15,12 +19,18 @@ from segmentation_models_pytorch.datasets import SimpleOxfordPetDataset
 
 from midas_loss import *
 from training.src.plmodel import DepthPLModel
+from training.src.utils import load_config, print_config
 from omegaconf import OmegaConf, DictConfig
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config_path', type=str, help='path to config file', default=None)
+    return parser.parse_args()
+
 class CustomDataset():
-    def __init__(self):
-        self.imgs_path = "depth_dataset/images/"
-        self.labels_path = "depth_dataset/labels/"
+    def __init__(self, config):
+        self.imgs_path = config['DATASET']['TRAIN']
+        self.labels_path = config['DATASET']['TEST']
 
         self.images_list = [os.path.basename(x) for x in glob.glob(self.imgs_path + "*")]
         self.labels_list = [os.path.basename(x) for x in glob.glob(self.labels_path + "*")]
@@ -28,7 +38,7 @@ class CustomDataset():
 
         assert len(self.images_list) == len(self.labels_list)
         
-        self.img_dim = (256, 256)
+        self.img_dim = config['DATA']['SCALE_SIZE']
     
     def __len__(self):
         return len(self.images_list)
@@ -57,32 +67,34 @@ class CustomDataset():
         return {'image': img_tensor.float(), 'depth': label_tensor.float()}
 
 if __name__ == '__main__':
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    device = 'cpu'
+    args = parse_args()
+    config_path = args.config_path
+    config = load_config(config_path)    
 
-    # init train, val, test sets
-    train_dataset = CustomDataset()
-    valid_dataset = CustomDataset()
-    test_dataset = CustomDataset()
+    train_dataset = CustomDataset(config)
+    valid_dataset = CustomDataset(config)
+    test_dataset = CustomDataset(config)
     
     print(f"Train size: {len(train_dataset)}")
     print(f"Valid size: {len(valid_dataset)}")
     print(f"Test size: {len(test_dataset)}")
     
+    batch_size = config['SOLVER']['BATCHSIZE']
+
     n_cpu = os.cpu_count()
-    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=n_cpu)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=8, shuffle=False, num_workers=n_cpu)
-    test_dataloader = DataLoader(test_dataset, batch_size=8, shuffle=False, num_workers=n_cpu)
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=n_cpu)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=n_cpu)
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=n_cpu)
     
-    model = DepthPLModel()
+    model = DepthPLModel(config)
     print(model)
 
     logger = TensorBoardLogger("tb_logs", name="mobilenetv3_psp")
     
     trainer = pl.Trainer(
         gpus=1,
-        max_epochs=50,
-        log_every_n_steps=4,
+        max_epochs=config.SOLVER.num_epochs,
+        log_every_n_steps=config.SOLVER.SAVE_INTERVAL,
         logger=logger
     )
     
@@ -91,3 +103,28 @@ if __name__ == '__main__':
         train_dataloaders=train_dataloader,
         val_dataloaders=valid_dataloader,
     )
+
+
+    #ckp = "/home/yegor/repos/MiDaS/tb_logs/mobilenetv3_psp/version_5/checkpoints/epoch\=69-step\=980.ckpt"
+    ##model = MiDaSModel.load_from_checkpoint(checkpoint_path=ckp)
+    #imgs_path = "depth_dataset/images/"
+    ##imgs_path = "input/"
+    #imgs_list = [x for x in glob.glob(imgs_path + "*")]
+    #
+    #for img_name in imgs_list:
+    #    print('i name', img_name)
+    #    img = cv2.imread(img_name)
+    #    img_dim = (256, 256)
+    #    img = cv2.resize(img, img_dim)
+
+    #    img_tensor = torch.from_numpy(img)
+    #    img_tensor = img_tensor.permute(2, 0, 1)
+    #    output = model(img_tensor) * 255
+    #    cv2.imwrite(f'training_output/{os.path.basename(img_name)}', output.detach().numpy().reshape(256, 256, 1))
+    
+
+    #valid_metrics = trainer.validate(model, dataloaders=valid_dataloader, verbose=False)
+    #pprint(valid_metrics)
+    # 
+    #test_res = trainer.test(dataloaders=test_dataloader, ckpt_path=ckp)
+    #pprint(test_res)

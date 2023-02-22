@@ -5,8 +5,8 @@ MODEL:
   # model type:
   # 'DeepLabV3', 'DeepLabV3Plus', 'FPN', 'Linknet',
   # 'PAN', 'PSPNet', 'Unet', 'UnetPlusPlus'
-  TYPE: 'UnetPlusPlus'
-  BACKBONE: 'efficientnet-b0'
+  TYPE: 'Unet'
+  BACKBONE: 'timm-mobilenetv3_small_minimal_100'
 SOLVER:
   BASE_LR: 0.0001
   BATCHSIZE: 8

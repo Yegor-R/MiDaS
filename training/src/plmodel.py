@@ -14,48 +14,39 @@ from src.metrics import evaluate_depth_metrics, DepthMetrics
 from src.model import MyUnet
 from src.sobel import Sobel
 
+class MyAdaptiveMaxPool2d(nn.Module):
+    def __init__(self, sz=None):
+        super().__init__()
+
+
+    def forward(self, x):
+        inp_size = x.size()
+        return nn.functional.max_pool2d(input=x,
+                  kernel_size= (inp_size[2], inp_size[3]))
 
 class DepthPLModel(LightningModule):
-    def __init__(self):
-        config: DictConfig = load_config('training/configs/default.yaml', update_dotlist=None)
+    def __init__(self, config):
         super().__init__()
         self.config = config
         self.cos = nn.CosineSimilarity(dim=1, eps=0)
         self.get_gradient = Sobel()
-        #self.net = getattr(smp, config.MODEL.TYPE)(encoder_name=config.MODEL.BACKBONE,
-        #                                               encoder_weights='imagenet',
-        #                                               in_channels=3, classes=1,)
-#        self.model = smp.PSPNet(
-#            encoder_name="timm-mobilenetv3_large_100",
-#            encoder_weights="imagenet",
-#            in_channels=3,
-#            classes=1,
-#        )
-#        self.model.decoder.psp.blocks[0].pool[0] = nn.AvgPool2d(3, stride = 1)
-#        self.model.decoder.psp.blocks[1].pool[0] = nn.AvgPool2d(3, stride = 1)
-#        self.model.decoder.psp.blocks[2].pool[0] = nn.AvgPool2d(3, stride = 1)
-#        self.model.decoder.psp.blocks[3].pool[0] = nn.AvgPool2d(3, stride = 1)
-#        self.model.segmentation_head = nn.Sequential(
-#                nn.Conv2d(512, 1, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-#                nn.UpsamplingBilinear2d(scale_factor=8.0),
-#                nn.Sigmoid()
-#                )
-#
-    
-        self.model = smp.Unet(
-            encoder_name="timm-mobilenetv3_small_100",
-            encoder_weights="imagenet",
-            in_channels=3,
-            classes=1,
-        )
+        self.model = getattr(smp, config.MODEL.TYPE)(encoder_name=config.MODEL.BACKBONE,
+                                                       encoder_weights='imagenet',
+                                                       in_channels=3, classes=1,)
+        if config.MODEL.TYPE == "PSPNet":
+            self.model.segmentation_head = nn.Sequential(
+                    nn.Conv2d(512, 1, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+                    nn.UpsamplingBilinear2d(scale_factor=8.0),
+                    nn.Sigmoid()
+                    )
 
-        # For Unet
-        self.model.segmentation_head = nn.Sequential(
-                                       nn.Conv2d(16,1, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-                                       nn.Sigmoid()
-                                     )
+        if config.MODEL.TYPE == "Unet":
+            self.model.segmentation_head = nn.Sequential(
+                                           nn.Conv2d(16,1, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+                                           nn.Sigmoid()
+                                         )
 
-        params = smp.encoders.get_preprocessing_params("timm-mobilenetv3_small_minimal_100")
+        params = smp.encoders.get_preprocessing_params(config.MODEL.BACKBONE)
         self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1))
         self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1))
 
